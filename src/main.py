@@ -1,12 +1,14 @@
 from typing import List
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 
 def data_prepare():
     temp = []
     cp = []
     txt_reader("Specific_Heat.txt", temp, cp)
-    return temp, cp
+    return np.array(temp), np.array(cp)
 
 
 def txt_reader(text_input_path: str, temp: List, cp: List):
@@ -25,48 +27,69 @@ def read_line(line: str, temp: List, cp: List):
             cp.append(line[sign_number+1:-2])
 
 
-def repair_types(temp: List, cp: List):
-    for index, value in enumerate(temp):
-        temp[index] = float(value)
-    for index, value in enumerate(cp):
-        cp[index] = float(value)
+def repair_types(data: pd.DataFrame):
+    for index, value in enumerate(data["temp"]):
+        data["temp"][index] = int(float(value))
+    for index, value in enumerate(data["cp"]):
+        data["cp"][index] = float(value)
 
 
-def prepare_enthalpy(temp: List, cp: List):
+def prepare_enthalpy(data):
     enthalpy = []
-    if len(temp) != len(cp):
-        print("The lists aren't equal")
-        return 0
-    for index in range(len(temp)):
+    for index in range(len(data["temp"])):
         index = int(index)
         if index == 0:
             enthalpy.append(0)
         else:
-            enthalpy.append(enthalpy[index - 1] + (temp[index]-temp[index-1]) * (cp[index]+cp[index-1]) * (1/2))
-    return enthalpy
+            enthalpy.append(enthalpy[index - 1] + (data["temp"][index]-data["temp"][index-1])
+                            * (data["cp"][index]+data["cp"][index-1]) * (1/2))
+    data["enthalpy"] = np.array(enthalpy)
+    return data
 
 
-def interpolate(temp_list: List, cp: List, value: int):
-    for index in range(len(temp_list)):
-        if value > temp_list[index]:
+def interpolate(temp: pd.Series, data_to_interpolate: pd.Series, value: int):
+    for index in range(len(temp)):
+        if value > temp[index]:
             continue
         else:
-            return (((value-temp_list[index - 1]) * ((cp[index]-cp[index - 1])
-                                                     / (temp_list[index]- temp_list[index - 1]))) + cp[index - 1])
+            return (((value - temp[index - 1])
+                     * ((data_to_interpolate[index] - data_to_interpolate[index - 1])
+                        / (temp[index] - temp[index - 1]))) + data_to_interpolate[index - 1])
 
 
-def add_phase_transition(temp: List, entalph: List, t_start: float, t_end: float, function: int):
-    pass
+def thicken_list(thin_table: pd.DataFrame, start_point: int, end_point: int):
+    temps = []
+    cps = []
+    enthalpys = []
+    for temp in range(int(start_point), int(end_point)):
+        if temp not in thin_table["temp"]:
+            temps.append(temp)
+            cps.append(interpolate(thin_table["temp"], thin_table["cp"], temp))
+            enthalpys.append(interpolate(thin_table["temp"], thin_table["enthalpy"], temp))
+    thin_table = thin_table.append(pd.DataFrame({"temp": temps, "cp": cps, "enthalpy": enthalpys}), ignore_index=True)
+    return thin_table.sort_values("temp")
+
+
+def include_transition_heat_rect(data: pd.DataFrame, t_start: int, t_end: int, value: float):
+    for index in range(len(data["temp"])):
+        if t_start <= data["temp"][index]:
+            data["enthalpy"].at[index] += (value / (t_end - t_start))
+    return data
+
+
+def add_phase_transition(data: pd.DataFrame, t_start: int, t_end: int, value: float):
+    data = thicken_list(data, t_start, t_end)
+    data = data.reset_index(drop=True)
+    data = include_transition_heat_rect(data, t_start, t_end, value)
+    return data
 
 
 if __name__ == "__main__":
     temp_list, cp_list = data_prepare()
-    repair_types(temp_list, cp_list)
-    enthalp_list = prepare_enthalpy(temp_list, cp_list)
-    # print(temp_list, "\n", cp_list, "\n", enthalp_list)
-    if len(enthalp_list) == len(cp_list):
-        print("Lists lengths are equal")
-    # print(interpolate(temp_list, enthalp_list, 140))
-    # print(interpolate(temp_list, enthalp_list, 700))
-    # print(interpolate(temp_list, enthalp_list, 800))
-    # print(interpolate(temp_list, enthalp_list, 1545))
+    enthalpy_data_frame = pd.DataFrame({"temp": temp_list, "cp": cp_list})
+    repair_types(enthalpy_data_frame)
+    enthalpy_data_frame = prepare_enthalpy(enthalpy_data_frame)
+    plt.plot(enthalpy_data_frame["temp"], enthalpy_data_frame["enthalpy"])
+    enthalpy_data_frame = add_phase_transition(enthalpy_data_frame, 100, 120, 1000)
+    plt.plot(enthalpy_data_frame["temp"], enthalpy_data_frame["enthalpy"])
+    plt.show()
