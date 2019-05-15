@@ -71,9 +71,14 @@ def thicken_list(thin_table: pd.DataFrame, start_point: int, end_point: int):
 
 
 def include_transition_heat_rect(data: pd.DataFrame, t_start: int, t_end: int, value: float):
+    factor = 0
+    factor_inc = (value)/(t_end - t_start)
     for index in range(len(data["temp"])):
-        if t_start <= data["temp"][index]:
-            data["enthalpy"].at[index] += (value / (t_end - t_start))
+        if (t_start <= data["temp"][index]) and (t_end >= data["temp"][index]):
+            data["enthalpy"].at[index] += factor
+            factor += factor_inc
+        elif data["temp"][index] > t_end:
+            data["enthalpy"].at[index] += factor
     return data
 
 
@@ -90,6 +95,6 @@ if __name__ == "__main__":
     repair_types(enthalpy_data_frame)
     enthalpy_data_frame = prepare_enthalpy(enthalpy_data_frame)
     plt.plot(enthalpy_data_frame["temp"], enthalpy_data_frame["enthalpy"])
-    enthalpy_data_frame = add_phase_transition(enthalpy_data_frame, 100, 120, 1000)
+    enthalpy_data_frame = add_phase_transition(enthalpy_data_frame, 100, 1000, 1000)
     plt.plot(enthalpy_data_frame["temp"], enthalpy_data_frame["enthalpy"])
     plt.show()
